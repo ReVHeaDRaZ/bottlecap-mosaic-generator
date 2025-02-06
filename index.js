@@ -79,6 +79,24 @@ function updateCapUsageDisplay() {
     }
 }
 
+function updateMosaicDimensions() {
+    let gridSize = parseInt(document.getElementById('gridSize').value);
+    let capsWide = Math.floor(uploadedImage.width / gridSize);
+    let capsHigh = Math.floor(uploadedImage.height / gridSize);
+
+    let widthMM = capsWide * 29; 
+    let heightMM = capsHigh * 29;
+    
+    let widthCM = (widthMM / 10).toFixed(1);  
+    let heightCM = (heightMM / 10).toFixed(1);  
+    
+    let widthIN = (widthMM / 25.4).toFixed(1);  
+    let heightIN = (heightMM / 25.4).toFixed(1);
+
+    document.getElementById('mosaicDimensions').innerHTML = 
+        `Approx. Size: ${widthCM}cm × ${heightCM}cm (${widthIN}in × ${heightIN}in)`;
+}
+
 // Process image and generate mosaic
 async function processImage() {
     if (!uploadedImage) return;
@@ -110,6 +128,7 @@ async function processImage() {
     document.getElementById('capCount').textContent = `Bottle Caps Used: ${capCount}`;
     updateCapUsageDisplay();
     updateCanvasDisplay();
+    updateMosaicDimensions();
 }
 
 // Toggle between input image and mosaic
