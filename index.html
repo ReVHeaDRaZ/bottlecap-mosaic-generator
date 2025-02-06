@@ -13,7 +13,7 @@
 </header>
 <main class="container">
     <section class="instructions">
-        <p>Upload an image, adjust grid size to your liking, then click Download Mosaic</p>
+        <p>Upload an image, adjust grid size to your liking, then choose a Download option</p>
     </section>
     <section class="controls">
         <label class="file-upload">
@@ -33,8 +33,11 @@
     <section class="canvas-container">
         <canvas id="canvasOutput"></canvas>
     </section>
-    <button id="downloadMosaic" class="download-btn">Download Mosaic</button>
     <p id="mosaicDimensions"></p>
+    <section class="download-options">
+        <button id="downloadMosaic" class="download-btn">Download Standard Mosaic</button>
+        <button id="downloadHighResButton" class="download-btn">Download High-Res Mosaic</button>
+    </section>
     <section class="cap-usage">
         <h3>Bottle Cap Usage</h3>
         <p id="capCount">Bottle Caps Used: 0</p>

@@ -160,8 +160,53 @@ document.getElementById('gridSize').addEventListener('change', processImage);
 document.getElementById('showInputImage').addEventListener('change', updateCanvasDisplay);
 
 document.getElementById('downloadMosaic').addEventListener('click', function () {
+    if (!mosaicGenerated) {
+        alert("Generate the mosaic first!");
+        return;
+    }
     const link = document.createElement('a');
     link.download = 'bottlecap_mosaic.png';
     link.href = canvas.toDataURL('image/png');
     link.click();
 });
+
+function downloadHighResMosaic() {
+    if (!mosaicGenerated) {
+        alert("Generate the mosaic first!");
+        return;
+    }
+
+    let gridSize = parseInt(document.getElementById('gridSize').value);
+    let capsWide = Math.floor(uploadedImage.width / gridSize);
+    let capsHigh = Math.floor(uploadedImage.height / gridSize);
+
+    let maxDimension = 8192; // Max safe canvas size
+    let baseCapSize = 300;
+    let scaledCapSize = Math.min(100, Math.floor(maxDimension / Math.max(capsWide, capsHigh) * baseCapSize));
+
+    let finalWidth = capsWide * scaledCapSize;
+    let finalHeight = capsHigh * scaledCapSize;
+
+    let highResCanvas = document.createElement('canvas');
+    highResCanvas.width = finalWidth;
+    highResCanvas.height = finalHeight;
+    let highResCtx = highResCanvas.getContext('2d');
+
+    for (let y = 0; y < capsHigh; y++) {
+        for (let x = 0; x < capsWide; x++) {
+            let blockData = ctx.getImageData(x * gridSize, y * gridSize, gridSize, gridSize).data;
+            let avgColor = getAverageColor(blockData);
+            let bestCap = findClosestBottleCap(avgColor);
+            highResCtx.drawImage(bestCap, x * scaledCapSize, y * scaledCapSize, scaledCapSize, scaledCapSize);
+        }
+    }
+
+    highResCanvas.toBlob(function(blob) {
+        let link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = "bottlecap_mosaic.png";
+        link.click();
+    }, "image/png");
+}
+
+document.getElementById('downloadHighResButton').addEventListener('click', downloadHighResMosaic);
