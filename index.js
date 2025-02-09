@@ -201,12 +201,20 @@ function downloadHighResMosaic() {
         }
     }
 
-    highResCanvas.toBlob(function(blob) {
-        let link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = "bottlecap_mosaic.png";
-        link.click();
-    }, "image/png");
+   // Convert the canvas to a data URL
+   const dataUrl = highResCanvas.toDataURL('image/png');
+
+   // Create a temporary anchor element for download
+   const link = document.createElement('a');
+   link.href = dataUrl;
+   link.download = 'bottlecap_mosaic.png';
+   
+   // Append the link to the body and trigger the click event
+   document.body.appendChild(link);
+   link.click();
+   
+   // Remove the link from the body
+   document.body.removeChild(link);
 }
 
 document.getElementById('downloadHighResButton').addEventListener('click', downloadHighResMosaic);
