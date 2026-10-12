@@ -53,6 +53,12 @@
                         <span class="inventory-count" id="inventoryCount">Loading collection…</span>
                         <button class="text-button" type="button" id="selectAllCaps">Select all</button>
                     </div>
+                    <label class="add-caps-button" for="capFiles">
+                        <span aria-hidden="true">＋</span> Add your bottle cap images
+                        <input id="capFiles" type="file" accept="image/*" multiple>
+                    </label>
+                    <p class="cap-upload-help">Choose one or more clear photos or scans. Added caps stay in your collection while this page is open.</p>
+                    <p class="cap-upload-status" id="capUploadStatus" role="status" aria-live="polite"></p>
                     <div class="cap-grid" id="capInventory" aria-label="Available bottle caps"></div>
                 </section>
 

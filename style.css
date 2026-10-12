@@ -167,8 +167,30 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .inventory-count { color: #85877f; font-size: 10px; }
 .text-button { padding: 3px 0; border: 0; background: none; color: var(--accent-dark); cursor: pointer; font-size: 10px; font-weight: 700; }
 .text-button:hover { text-decoration: underline; }
+.add-caps-button {
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border: 1px dashed #cbbb9e;
+    border-radius: 6px;
+    background: #fbf6eb;
+    color: #684c2d;
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 700;
+    transition: background .16s, border-color .16s;
+}
+.add-caps-button:hover { border-color: var(--accent); background: #f7ead5; }
+.add-caps-button > span { color: var(--accent-dark); font-size: 15px; }
+.add-caps-button input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.cap-upload-help, .cap-upload-status { margin: 6px 0 0; color: #8a806f; font-size: 9px; line-height: 1.45; }
+.cap-upload-status:empty { display: none; }
+.cap-upload-status.error { color: #a9432d; }
 
 .cap-grid {
+    margin-top: 11px;
     max-height: 204px;
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));

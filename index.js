@@ -16,6 +16,8 @@ let capColumns = 0;
 let capRows = 0;
 let renderTimer;
 let imageObjectUrl = null;
+let customCapSequence = 0;
+const customCapObjectUrls = [];
 
 const controls = {
     gridSize: document.getElementById('gridSize'),
@@ -95,6 +97,17 @@ function loadImage(src) {
     });
 }
 
+function sampleBottleCap(image) {
+    const sampleSize = 64;
+    const scale = Math.min(1, sampleSize / Math.max(image.naturalWidth, image.naturalHeight));
+    const sample = document.createElement('canvas');
+    sample.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    sample.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const sampleContext = sample.getContext('2d', { willReadFrequently: true });
+    sampleContext.drawImage(image, 0, 0, sample.width, sample.height);
+    return getAverageColor(sampleContext.getImageData(0, 0, sample.width, sample.height).data);
+}
+
 async function loadBottleCaps() {
     const response = await fetch('./bottle-caps/bottle_caps.json');
     if (!response.ok) throw new Error(`Cap collection request failed (${response.status})`);
@@ -104,21 +117,15 @@ async function loadBottleCaps() {
     }
 
     const loadedCaps = await Promise.all(filenames.map(async (filename) => {
-        const image = await loadImage(`./bottle-caps/${filename}`);
-        const sample = document.createElement('canvas');
-        sample.width = image.naturalWidth;
-        sample.height = image.naturalHeight;
-        const sampleContext = sample.getContext('2d', { willReadFrequently: true });
-        sampleContext.drawImage(image, 0, 0);
-        const averageColor = getAverageColor(
-            sampleContext.getImageData(0, 0, sample.width, sample.height).data
-        );
+        const src = `./bottle-caps/${filename}`;
+        const image = await loadImage(src);
 
         return {
             filename,
             name: formatName(filename),
+            src,
             image,
-            averageColor,
+            averageColor: sampleBottleCap(image),
             selected: true
         };
     }));
@@ -147,7 +154,7 @@ function renderCapInventory() {
         });
 
         const image = document.createElement('img');
-        image.src = `./bottle-caps/${cap.filename}`;
+        image.src = cap.src;
         image.alt = '';
         image.loading = index > 15 ? 'lazy' : 'eager';
 
@@ -159,7 +166,10 @@ function renderCapInventory() {
         inventory.append(label);
     });
 
-    document.getElementById('inventoryCount').textContent = `${bottleCaps.length} caps in the collection`;
+    const customCount = bottleCaps.filter((cap) => cap.isCustom).length;
+    document.getElementById('inventoryCount').textContent = customCount
+        ? `${bottleCaps.length} caps · ${customCount} added by you`
+        : `${bottleCaps.length} caps in the collection`;
     updateSelectionSummary();
 }
 
@@ -433,7 +443,7 @@ function updateCapUsageDisplay(usage) {
         const nameContainer = document.createElement('span');
         nameContainer.className = 'usage-cap-name';
         const image = document.createElement('img');
-        image.src = `./bottle-caps/${cap.filename}`;
+        image.src = cap.src;
         image.alt = '';
         const name = document.createElement('span');
         name.textContent = cap.name;
@@ -453,6 +463,73 @@ function updateUsageSummary() {
     const state = details.open ? 'Click to hide' : 'Click to view';
     document.getElementById('usageSummary').textContent =
         `${count} ${count === 1 ? 'cap type' : 'cap types'} · ${state}`;
+}
+
+async function createCustomBottleCap(file) {
+    const src = URL.createObjectURL(file);
+    try {
+        const image = await loadImage(src);
+        customCapSequence += 1;
+
+        return {
+            filename: `custom-cap-${customCapSequence}`,
+            name: formatName(file.name),
+            src,
+            image,
+            averageColor: sampleBottleCap(image),
+            selected: true,
+            isCustom: true
+        };
+    } catch (error) {
+        URL.revokeObjectURL(src);
+        throw new Error(`${file.name}: ${error.message}`);
+    }
+}
+
+async function addBottleCapFiles(files) {
+    const uploadStatus = document.getElementById('capUploadStatus');
+    uploadStatus.classList.remove('error');
+    uploadStatus.textContent = 'Adding your bottle caps…';
+
+    const validFiles = [];
+    const rejectedFiles = [];
+    for (const file of files) {
+        if (!file.type.startsWith('image/')) rejectedFiles.push(`${file.name} is not an image.`);
+        else validFiles.push(file);
+    }
+
+    const results = await Promise.allSettled(validFiles.map(createCustomBottleCap));
+    const addedCaps = results
+        .filter((result) => result.status === 'fulfilled')
+        .map((result) => result.value);
+    results.forEach((result) => {
+        if (result.status === 'rejected') rejectedFiles.push(result.reason.message);
+    });
+
+    if (addedCaps.length) {
+        for (const cap of addedCaps) {
+            const baseName = cap.name;
+            const matchingNames = bottleCaps.filter((existingCap) =>
+                existingCap.name === baseName || existingCap.name.startsWith(`${baseName} (`)
+            ).length;
+            if (matchingNames) cap.name = `${baseName} (${matchingNames + 1})`;
+            bottleCaps.push(cap);
+        }
+        customCapObjectUrls.push(...addedCaps.map((cap) => cap.src));
+        renderCapInventory();
+        scheduleRender();
+    }
+
+    if (rejectedFiles.length) {
+        uploadStatus.classList.add('error');
+        uploadStatus.textContent = [
+            addedCaps.length ? `Added ${addedCaps.length} cap${addedCaps.length === 1 ? '' : 's'}.` : '',
+            `Could not add: ${rejectedFiles.join(' ')}`
+        ].filter(Boolean).join(' ');
+    } else {
+        uploadStatus.textContent =
+            `Added ${addedCaps.length} cap${addedCaps.length === 1 ? '' : 's'} — selected for your mosaic.`;
+    }
 }
 
 async function processImage() {
@@ -622,6 +699,12 @@ async function downloadMosaic(highResolution) {
 }
 
 fileInput.addEventListener('change', (event) => handleSelectedFile(event.target.files[0]));
+const capFilesInput = document.getElementById('capFiles');
+capFilesInput.addEventListener('change', async () => {
+    const files = Array.from(capFilesInput.files);
+    capFilesInput.value = '';
+    if (files.length) await addBottleCapFiles(files);
+});
 
 for (const control of [controls.gridSize, controls.capSize, controls.capSpacing]) {
     control.addEventListener('input', scheduleRender);
@@ -671,6 +754,10 @@ uploadZone.addEventListener('drop', (event) => {
 });
 
 updateRangeLabels();
+window.addEventListener('pagehide', () => {
+    if (imageObjectUrl) URL.revokeObjectURL(imageObjectUrl);
+    customCapObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+});
 loadBottleCaps().catch((error) => {
     document.getElementById('inventoryCount').textContent = 'Collection could not be loaded';
     setStatus(error.message || 'Bottle cap images could not be loaded.', true);
