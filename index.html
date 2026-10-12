@@ -3,53 +3,174 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RaZ's Bottle Cap Mosaic Generator</title>
-    <link rel="icon" type="image/png" href="./favicon-96x96.png" sizes="96x96" />
-    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <link rel="shortcut icon" href="./favicon.ico" />
-    <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
-    <meta name="apple-mobile-web-app-title" content="RaZ's Bottle Cap Mosaic Generator" />
-    <link rel="manifest" href="./site.webmanifest" />
+    <meta name="theme-color" content="#ede3d0">
+    <meta name="description" content="Turn your favourite beer caps into a custom mosaic for your bar, wall, or a resin-finished wine barrel top.">
+    <title>Cap &amp; Cask — Bottle Cap Mosaic Workshop</title>
+    <link rel="icon" type="image/png" href="./favicon-96x96.png" sizes="96x96">
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+    <link rel="shortcut icon" href="./favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
+    <link rel="manifest" href="./site.webmanifest">
     <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
-<header>
-    <h2>RaZ's Bottle Cap Mosaic Generator</h2>
-</header>
-<main class="container">
-    <section class="instructions">
-        <p>Upload an image, adjust grid tile size to your liking, then choose a Download option</p>
-    </section>
-    <section class="controls">
-        <label class="file-upload">
-            Upload Image
-            <input type="file" id="fileInput" name="file" hidden />
-        </label>
-        <div class="grid-control">
-            <label for="gridSize">Grid Tile Size:</label>
-            <input type="number" id="gridSize" value="20" min="1" max="100" step="1" />
+    <header class="site-header">
+        <a class="brand" href="#" aria-label="Cap and Cask home">
+            <span class="brand-mark" aria-hidden="true">C<span></span></span>
+            <span>cap &amp; cask<span class="brand-period">.</span></span>
+        </a>
+        <span class="header-note"><span class="status-dot"></span> Made for good times &amp; good timber</span>
+    </header>
+
+    <main class="app-shell">
+        <section class="intro">
+            <p class="eyebrow">THE BREWER’S MOSAIC WORKSHOP</p>
+            <h1>Good beer.<br>Great <span>memories.</span></h1>
+            <p class="intro-copy">Give those hard-earned caps a second life. Build a keepsake for the bar, the wall, or a round of resin on an old wine barrel.</p>
+        </section>
+
+        <div class="workspace">
+            <aside class="settings-panel" aria-label="Mosaic settings">
+                <section class="setting-section upload-section">
+                    <div class="section-heading">
+                        <span class="step-number">01</span>
+                        <div><h2>Choose your image</h2><p>Start with a photo or illustration</p></div>
+                    </div>
+                    <label class="upload-zone" id="uploadZone" for="fileInput">
+                        <span class="upload-icon" aria-hidden="true">↑</span>
+                        <span class="upload-title" id="uploadTitle">Drop an image here</span>
+                        <span class="upload-hint" id="uploadHint">or <span>browse files</span> · PNG, JPG, WEBP</span>
+                        <input type="file" id="fileInput" name="file" accept="image/*">
+                    </label>
+                </section>
+
+                <section class="setting-section">
+                    <div class="section-heading">
+                        <span class="step-number">02</span>
+                        <div><h2>Pick your bottle caps</h2><p id="capSelectionSummary">Choose the caps you have</p></div>
+                    </div>
+                    <div class="cap-actions">
+                        <span class="inventory-count" id="inventoryCount">Loading collection…</span>
+                        <button class="text-button" type="button" id="selectAllCaps">Select all</button>
+                    </div>
+                    <div class="cap-grid" id="capInventory" aria-label="Available bottle caps"></div>
+                </section>
+
+                <section class="setting-section">
+                    <div class="section-heading">
+                        <span class="step-number">03</span>
+                        <div><h2>Make it yours</h2><p>Fine-tune your mosaic layout</p></div>
+                    </div>
+                    <div class="control-row">
+                        <label for="gridSize">Image detail</label>
+                        <span class="control-value"><output id="gridSizeValue" for="gridSize">20</output> px / cap</span>
+                    </div>
+                    <input class="range-input" type="range" id="gridSize" min="4" max="80" step="1" value="20">
+                    <div class="range-ends"><span>More detail</span><span>Fewer caps</span></div>
+
+                    <div class="control-row select-label">
+                        <label for="capSize">Cap diameter</label>
+                        <span class="control-value"><output id="capSizeValue" for="capSize">29</output> mm</span>
+                    </div>
+                    <input class="range-input" type="range" id="capSize" min="20" max="40" step="1" value="29">
+
+                    <div class="select-control">
+                        <label for="mosaicShape">Mosaic outline</label>
+                        <select id="mosaicShape">
+                            <option value="rectangle">Classic rectangle</option>
+                            <option value="circle">Round barrel top</option>
+                        </select>
+                    </div>
+                    <p class="shape-note" id="shapeNote">A round layout crops your image to a circle. The downloaded PNG keeps the outside transparent.</p>
+                    <div class="select-control">
+                        <label for="capShape">Cap shape</label>
+                        <select id="capShape">
+                            <option value="circle">Round</option>
+                            <option value="square">Square</option>
+                            <option value="hexagon">Hexagon</option>
+                        </select>
+                    </div>
+                    <div class="control-row spacing-row">
+                        <label for="capSpacing">Space between caps</label>
+                        <span class="control-value"><output id="capSpacingValue" for="capSpacing">8</output>%</span>
+                    </div>
+                    <input class="range-input" type="range" id="capSpacing" min="0" max="30" step="1" value="8">
+                    <div class="select-control background-control">
+                        <label for="backgroundColor">Gap color</label>
+                        <select id="backgroundColor">
+                            <option value="#eadcc2">Barrel oak</option>
+                            <option value="#f4f1e9">Warm white</option>
+                            <option value="#ffffff">White</option>
+                            <option value="#302820">Dark walnut</option>
+                            <option value="transparent">Transparent</option>
+                        </select>
+                    </div>
+                </section>
+            </aside>
+
+            <section class="preview-panel" aria-label="Mosaic preview">
+                <div class="preview-topline">
+                    <div>
+                        <p class="eyebrow">YOUR PREVIEW</p>
+                        <h2 id="previewHeading">Let’s see what’s on tap</h2>
+                    </div>
+                    <label class="preview-toggle" for="showInputImage">
+                        <input type="checkbox" id="showInputImage">
+                        <span class="toggle-track" aria-hidden="true"></span>
+                        <span>Original</span>
+                    </label>
+                </div>
+
+                <div class="preview-stage" id="previewStage">
+                    <div class="empty-state" id="emptyState">
+                        <div class="empty-art" aria-hidden="true">
+                            <span class="art-cap art-cap-one"></span><span class="art-cap art-cap-two"></span>
+                            <span class="art-cap art-cap-three"></span><span class="art-cap art-cap-four"></span>
+                            <span class="art-cap art-cap-five"></span><span class="art-cap art-cap-six"></span>
+                            <span class="art-cap art-cap-seven"></span><span class="art-cap art-cap-eight"></span>
+                            <span class="art-cap art-cap-nine"></span>
+                        </div>
+                        <p>Your next bar-room story starts here</p>
+                        <span>Choose a photo and your caps to get pouring</span>
+                    </div>
+                    <canvas id="canvasOutput" aria-label="Generated bottle cap mosaic" hidden></canvas>
+                </div>
+
+                <div class="preview-footer">
+                    <p id="mosaicDimensions">Dimensions will appear here</p>
+                    <span class="preview-status" id="generationStatus" role="status">Ready when you are</span>
+                </div>
+
+                <div class="result-summary">
+                    <div class="summary-item">
+                        <span class="summary-icon" aria-hidden="true">◉</span>
+                        <div><strong id="capCount">0</strong><span>caps in your mosaic</span></div>
+                    </div>
+                    <div class="summary-divider"></div>
+                    <div class="summary-item">
+                        <span class="summary-icon size-icon" aria-hidden="true">↔</span>
+                        <div><strong id="summaryDimensions">—</strong><span>approx. finished size</span></div>
+                    </div>
+                </div>
+
+                <details class="usage-details">
+                    <summary>Cap-by-cap breakdown <span id="usageSummary">See your inventory</span></summary>
+                    <ul id="capDetails"></ul>
+                </details>
+
+                <div class="download-row">
+                    <button id="downloadMosaic" class="download-button primary-button" type="button" disabled>
+                        <span aria-hidden="true">↓</span> Download mosaic
+                    </button>
+                    <button id="downloadHighResButton" class="download-button secondary-button" type="button" disabled>
+                        <span aria-hidden="true">↗</span> Print-ready
+                    </button>
+                </div>
+                <p class="download-note">Your image stays on your device. Nothing is uploaded.</p>
+            </section>
         </div>
-        <label class="toggle">
-            <input type="checkbox" id="showInputImage" />
-            <span class="slider"></span>
-            Show Input Image
-        </label>
-    </section>
-    <section class="canvas-container">
-        <canvas id="canvasOutput"></canvas>
-    </section>
-    <p id="mosaicDimensions"></p>
-    <section class="download-options">
-        <button id="downloadMosaic" class="download-btn">Download Standard Mosaic</button>
-        <button id="downloadHighResButton" class="download-btn">Download High-Res Mosaic</button>
-    </section>
-    <section class="cap-usage">
-        <h3>Bottle Cap Usage</h3>
-        <p id="capCount">Bottle Caps Used: 0</p>
-        <ul id="capDetails"></ul>
-    </section>
-</main>
-<script src="./index.js" type="text/javascript"></script>
+        <footer class="page-footer">Saved from a good night. Made for the next one. <span>✳</span></footer>
+    </main>
+    <script src="./index.js"></script>
 </body>
 </html>
