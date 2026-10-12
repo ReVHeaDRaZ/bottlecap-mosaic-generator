@@ -223,6 +223,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .range-ends { display: flex; justify-content: space-between; margin-top: 7px; color: #999b94; font-size: 9px; }
 .select-label { margin-top: 23px; }
 .select-control { margin-top: 22px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mosaic-style-control { margin-top: 0; margin-bottom: 4px; }
 .select-control select {
     min-width: 133px;
     padding: 8px 30px 8px 10px;
@@ -233,6 +234,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     font-size: 11px;
 }
 .shape-note { margin: 8px 0 0; color: #89785f; font-size: 10px; line-height: 1.55; }
+.barrel-controls { margin-top: 13px; padding: 12px; border: 1px solid #e9d8bc; border-radius: 7px; background: #fbf3e4; }
+.barrel-size-control { margin-top: 0; }
+.barrel-size-control select { max-width: 190px; }
+.custom-diameter { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; color: #555a51; font-size: 11px; font-weight: 650; }
+.diameter-input-wrap { display: inline-flex; align-items: center; gap: 6px; color: #777a72; font-size: 10px; }
+.diameter-input-wrap input { width: 76px; padding: 7px 8px; border: 1px solid #e3d7c1; border-radius: 5px; background: #fffaf0; color: #382d23; font-size: 11px; }
+.barrel-help { margin: 10px 0 0; color: #806c50; font-size: 10px; line-height: 1.5; }
 .crop-controls {
     margin-top: 15px;
     padding: 13px 12px 11px;

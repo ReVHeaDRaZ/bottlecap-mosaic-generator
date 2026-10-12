@@ -61,12 +61,43 @@
                         <span class="step-number">03</span>
                         <div><h2>Make it yours</h2><p>Fine-tune your mosaic layout</p></div>
                     </div>
-                    <div class="control-row">
+                    <div class="select-control mosaic-style-control">
+                        <label for="mosaicShape">Mosaic style</label>
+                        <select id="mosaicShape">
+                            <option value="rectangle">Classic rectangle</option>
+                            <option value="circle">Round barrel top</option>
+                        </select>
+                    </div>
+                    <p class="shape-note" id="shapeNote">Choose your barrel size and we’ll work out the cap layout. You can zoom and reposition the image inside the round cutout.</p>
+                    <div class="barrel-controls" id="barrelControls" hidden>
+                        <div class="select-control barrel-size-control">
+                            <label for="barrelSize">Barrel lid diameter</label>
+                            <select id="barrelSize">
+                                <option value="35">Hobby barrel · 35 cm</option>
+                                <option value="50">Wine barrel · 50 cm</option>
+                                <option value="55">Wine barrel · 55 cm</option>
+                                <option value="60">Wine barrel · 60 cm</option>
+                                <option value="65">Wine barrel · 65 cm</option>
+                                <option value="70">Wine barrel · 70 cm</option>
+                                <option value="75">Wine barrel · 75 cm</option>
+                                <option value="custom">Enter my own size</option>
+                            </select>
+                        </div>
+                        <label class="custom-diameter" id="customDiameterControl" for="customDiameter" hidden>
+                            <span>Your lid diameter</span>
+                            <span class="diameter-input-wrap">
+                                <input id="customDiameter" type="number" min="20" max="150" step="0.5" value="35" inputmode="decimal">
+                                <span>cm</span>
+                            </span>
+                        </label>
+                        <p class="barrel-help" id="barrelFitSummary">We’ll fit your caps to the lid size you choose.</p>
+                    </div>
+                    <div class="control-row" id="imageDetailControl">
                         <label for="gridSize">Image detail</label>
                         <span class="control-value"><output id="gridSizeValue" for="gridSize">20</output> px / cap</span>
                     </div>
                     <input class="range-input" type="range" id="gridSize" min="4" max="80" step="1" value="20">
-                    <div class="range-ends"><span>More detail</span><span>Fewer caps</span></div>
+                    <div class="range-ends" id="imageDetailEnds"><span>More detail</span><span>Fewer caps</span></div>
 
                     <div class="control-row select-label">
                         <label for="capSize">Cap diameter</label>
@@ -74,14 +105,6 @@
                     </div>
                     <input class="range-input" type="range" id="capSize" min="20" max="40" step="1" value="24">
 
-                    <div class="select-control">
-                        <label for="mosaicShape">Mosaic outline</label>
-                        <select id="mosaicShape">
-                            <option value="rectangle">Classic rectangle</option>
-                            <option value="circle">Round barrel top</option>
-                        </select>
-                    </div>
-                    <p class="shape-note" id="shapeNote">Zoom in and reposition the image inside the round cutout. The downloaded PNG keeps the outside transparent.</p>
                     <div class="crop-controls" id="cropControls" hidden>
                         <div class="control-row">
                             <label for="cropZoom">Image zoom</label>

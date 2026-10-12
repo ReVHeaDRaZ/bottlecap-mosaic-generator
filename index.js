@@ -21,6 +21,8 @@ const controls = {
     gridSize: document.getElementById('gridSize'),
     capSize: document.getElementById('capSize'),
     mosaicShape: document.getElementById('mosaicShape'),
+    barrelSize: document.getElementById('barrelSize'),
+    customDiameter: document.getElementById('customDiameter'),
     cropZoom: document.getElementById('cropZoom'),
     cropHorizontal: document.getElementById('cropHorizontal'),
     cropVertical: document.getElementById('cropVertical'),
@@ -46,6 +48,24 @@ function setStatus(message, isError = false) {
 
 function getSelectedCaps() {
     return bottleCaps.filter((cap) => cap.selected);
+}
+
+function getBarrelDiameterCm() {
+    return controls.barrelSize.value === 'custom'
+        ? Number(controls.customDiameter.value)
+        : Number(controls.barrelSize.value);
+}
+
+function isValidBarrelDiameter() {
+    const diameter = getBarrelDiameterCm();
+    return Number.isFinite(diameter) && diameter >= 20 && diameter <= 150;
+}
+
+function getBarrelCapsAcross() {
+    if (!isValidBarrelDiameter()) return 0;
+    const capDiameter = Number(controls.capSize.value);
+    const gap = capDiameter * Number(controls.capSpacing.value) / 100;
+    return Math.max(1, Math.floor(getBarrelDiameterCm() * 10 / (capDiameter + gap)));
 }
 
 function getAverageColor(data) {
@@ -170,7 +190,17 @@ function updateRangeLabels() {
         `${controls.capSpacing.value}% · ${gapMillimeters.toFixed(1)} mm`;
     const isCircle = controls.mosaicShape.value === 'circle';
     document.getElementById('shapeNote').hidden = !isCircle;
+    document.getElementById('barrelControls').hidden = !isCircle;
+    document.getElementById('imageDetailControl').hidden = isCircle;
+    document.getElementById('gridSize').hidden = isCircle;
+    document.getElementById('imageDetailEnds').hidden = isCircle;
     document.getElementById('cropControls').hidden = !isCircle;
+    document.getElementById('customDiameterControl').hidden =
+        !isCircle || controls.barrelSize.value !== 'custom';
+    const across = getBarrelCapsAcross();
+    document.getElementById('barrelFitSummary').textContent = across
+        ? `About ${across} caps across · ${across * across} caps in a full grid (fewer in the circle).`
+        : 'Enter a lid diameter between 20 and 150 cm.';
     document.getElementById('cropZoomValue').textContent = `${controls.cropZoom.value}%`;
     document.getElementById('cropHorizontalValue').textContent = `${controls.cropHorizontal.value}%`;
     document.getElementById('cropVerticalValue').textContent = `${controls.cropVertical.value}%`;
@@ -255,13 +285,20 @@ function getCanvasSize(capSize, spacing) {
         height: Math.ceil((capRows - 1) * pitch + capSize)
     };
     if (controls.mosaicShape.value === 'circle') {
-        layout.width = Math.max(layout.width, layout.height);
+        const pixelsPerMillimeter = capSize / Number(controls.capSize.value);
+        layout.width = Math.ceil(getBarrelDiameterCm() * 10 * pixelsPerMillimeter);
         layout.height = layout.width;
     }
+    layout.offsetX = controls.mosaicShape.value === 'circle'
+        ? (layout.width - ((capColumns - 1) * pitch + capSize)) / 2
+        : 0;
+    layout.offsetY = controls.mosaicShape.value === 'circle'
+        ? (layout.height - ((capRows - 1) * pitch + capSize)) / 2
+        : 0;
     return layout;
 }
 
-function getIncludedCells(capSize, pitch, width, height) {
+function getIncludedCells(capSize, pitch, width, height, offsetX, offsetY) {
     const cellIndices = [];
     const isCircle = controls.mosaicShape.value === 'circle';
     const centerX = width / 2;
@@ -271,8 +308,8 @@ function getIncludedCells(capSize, pitch, width, height) {
     for (let row = 0; row < capRows; row++) {
         for (let column = 0; column < capColumns; column++) {
             if (isCircle) {
-                const x = column * pitch + capSize / 2;
-                const y = row * pitch + capSize / 2;
+                const x = offsetX + column * pitch + capSize / 2;
+                const y = offsetY + row * pitch + capSize / 2;
                 if (Math.hypot(x - centerX, y - centerY) > radius) continue;
             }
             cellIndices.push(row * capColumns + column);
@@ -314,7 +351,7 @@ function drawImageInLayout(context, image, width, height, matteColor = controls.
 
 function paintMosaic(targetCanvas, targetContext, capSize, selectedCaps) {
     const spacing = Number(controls.capSpacing.value) / 100;
-    const { pitch, width, height } = getCanvasSize(capSize, spacing);
+    const { pitch, width, height, offsetX, offsetY } = getCanvasSize(capSize, spacing);
     targetCanvas.width = width;
     targetCanvas.height = height;
     targetContext.clearRect(0, 0, width, height);
@@ -333,14 +370,21 @@ function paintMosaic(targetCanvas, targetContext, capSize, selectedCaps) {
 
     const capShape = controls.capShape.value;
     const usage = new Map(selectedCaps.map((cap) => [cap.filename, 0]));
-    const cells = getIncludedCells(capSize, pitch, width, height);
+    const cells = getIncludedCells(capSize, pitch, width, height, offsetX, offsetY);
     for (const index of cells) {
         const color = sampledColors[index];
         const cap = findClosestBottleCap(color, selectedCaps);
         usage.set(cap.filename, usage.get(cap.filename) + 1);
         const column = index % capColumns;
         const row = Math.floor(index / capColumns);
-        drawCap(targetContext, cap, column * pitch, row * pitch, capSize, capShape);
+        drawCap(
+            targetContext,
+            cap,
+            offsetX + column * pitch,
+            offsetY + row * pitch,
+            capSize,
+            capShape
+        );
     }
 
     if (controls.mosaicShape.value === 'circle') targetContext.restore();
@@ -351,8 +395,8 @@ function getPhysicalDimensions() {
     const diameter = Number(controls.capSize.value);
     const spacing = Number(controls.capSpacing.value) / 100;
     if (controls.mosaicShape.value === 'circle') {
-        const width = (capColumns * diameter + (capColumns - 1) * diameter * spacing) / 10;
-        return { width, height: width };
+        const diameterCm = getBarrelDiameterCm();
+        return { width: diameterCm, height: diameterCm };
     }
     return {
         width: (capColumns * diameter + (capColumns - 1) * diameter * spacing) / 10,
@@ -413,6 +457,13 @@ function updateUsageSummary() {
 
 async function processImage() {
     if (!uploadedImage) return;
+    if (controls.mosaicShape.value === 'circle' && !isValidBarrelDiameter()) {
+        mosaicGenerated = false;
+        document.getElementById('downloadMosaic').disabled = true;
+        document.getElementById('downloadHighResButton').disabled = true;
+        setStatus('Enter a lid diameter between 20 and 150 cm.', true);
+        return;
+    }
     const selectedCaps = getSelectedCaps();
     if (selectedCaps.length === 0) {
         updateSelectionSummary();
@@ -421,7 +472,7 @@ async function processImage() {
 
     const sampleSize = Number(controls.gridSize.value);
     if (controls.mosaicShape.value === 'circle') {
-        capColumns = Math.ceil(Math.max(uploadedImage.naturalWidth, uploadedImage.naturalHeight) / sampleSize);
+        capColumns = getBarrelCapsAcross();
         capRows = capColumns;
     } else {
         capColumns = Math.ceil(uploadedImage.naturalWidth / sampleSize);
@@ -453,10 +504,16 @@ async function processImage() {
     }
 
     const spacing = Number(controls.capSpacing.value) / 100;
+    const targetCapSize = Number(controls.capSize.value);
+    const targetDiameterMm = controls.mosaicShape.value === 'circle'
+        ? getBarrelDiameterCm() * 10
+        : 0;
     const previewSize = Math.max(1, Math.min(
         28,
         Math.floor(Math.sqrt(MAX_PREVIEW_PIXELS / maximumCellCount)),
-        Math.floor(MAX_CANVAS_EDGE / (Math.max(capColumns, capRows) * (1 + spacing)))
+        controls.mosaicShape.value === 'circle'
+            ? Math.floor(MAX_CANVAS_EDGE * targetCapSize / targetDiameterMm)
+            : Math.floor(MAX_CANVAS_EDGE / (Math.max(capColumns, capRows) * (1 + spacing)))
     ));
     const { usage, capCount } = paintMosaic(mosaicCanvas, mosaicCtx, previewSize, selectedCaps);
     mosaicGenerated = true;
@@ -539,10 +596,16 @@ async function downloadMosaic(highResolution) {
             setStatus('Preparing your print-ready file…');
             const numberOfCaps = capColumns * capRows;
             const spacing = Number(controls.capSpacing.value) / 100;
+            const targetCapSize = Number(controls.capSize.value);
+            const targetDiameterMm = controls.mosaicShape.value === 'circle'
+                ? getBarrelDiameterCm() * 10
+                : 0;
             const printSize = Math.max(1, Math.min(
                 300,
                 Math.floor(Math.sqrt(MAX_PRINT_PIXELS / numberOfCaps)),
-                Math.floor(MAX_CANVAS_EDGE / (Math.max(capColumns, capRows) * (1 + spacing)))
+                controls.mosaicShape.value === 'circle'
+                    ? Math.floor(MAX_CANVAS_EDGE * targetCapSize / targetDiameterMm)
+                    : Math.floor(MAX_CANVAS_EDGE / (Math.max(capColumns, capRows) * (1 + spacing)))
             ));
             downloadCanvasElement = document.createElement('canvas');
             const downloadContext = downloadCanvasElement.getContext('2d');
@@ -566,6 +629,8 @@ for (const control of [controls.gridSize, controls.capSize, controls.capSpacing]
 for (const control of [controls.mosaicShape, controls.capShape, controls.backgroundColor]) {
     control.addEventListener('change', scheduleRender);
 }
+controls.barrelSize.addEventListener('change', scheduleRender);
+controls.customDiameter.addEventListener('input', scheduleRender);
 for (const control of [controls.cropZoom, controls.cropHorizontal, controls.cropVertical]) {
     control.addEventListener('input', scheduleRender);
 }
