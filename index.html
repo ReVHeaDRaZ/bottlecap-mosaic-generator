@@ -53,6 +53,12 @@
                         <span class="inventory-count" id="inventoryCount">Loading collection…</span>
                         <button class="text-button" type="button" id="selectAllCaps">Select all</button>
                     </div>
+                    <label class="cap-search" for="capSearch">
+                        <span class="cap-search-icon" aria-hidden="true"></span>
+                        <input id="capSearch" type="search" placeholder="Find a bottle cap…" autocomplete="off">
+                        <button class="cap-search-clear" id="clearCapSearch" type="button" aria-label="Clear cap search" hidden>×</button>
+                    </label>
+                    <p class="cap-search-results" id="capSearchResults" aria-live="polite" hidden></p>
                     <label class="add-caps-button" for="capFiles">
                         <span aria-hidden="true">＋</span> Add your bottle cap images
                         <input id="capFiles" type="file" accept="image/*" multiple>

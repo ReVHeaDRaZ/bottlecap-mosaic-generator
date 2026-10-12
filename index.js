@@ -136,8 +136,10 @@ async function loadBottleCaps() {
 function renderCapInventory() {
     const inventory = document.getElementById('capInventory');
     inventory.replaceChildren();
+    const query = document.getElementById('capSearch').value.trim().toLocaleLowerCase();
+    const matchingCaps = bottleCaps.filter((cap) => cap.name.toLocaleLowerCase().includes(query));
 
-    bottleCaps.forEach((cap, index) => {
+    matchingCaps.forEach((cap, index) => {
         const label = document.createElement('label');
         label.className = 'cap-option';
         label.title = cap.name;
@@ -165,6 +167,20 @@ function renderCapInventory() {
         label.append(checkbox, image, name);
         inventory.append(label);
     });
+
+    const searchResults = document.getElementById('capSearchResults');
+    searchResults.hidden = !query;
+    searchResults.textContent = query
+        ? `${matchingCaps.length} of ${bottleCaps.length} caps found`
+        : '';
+    inventory.dataset.empty = matchingCaps.length === 0 ? 'true' : 'false';
+    let emptyMessage = inventory.querySelector('.cap-search-empty');
+    if (matchingCaps.length === 0) {
+        emptyMessage = document.createElement('p');
+        emptyMessage.className = 'cap-search-empty';
+        emptyMessage.textContent = 'No caps match that search. Try another name.';
+        inventory.append(emptyMessage);
+    }
 
     const customCount = bottleCaps.filter((cap) => cap.isCustom).length;
     document.getElementById('inventoryCount').textContent = customCount
@@ -704,6 +720,18 @@ capFilesInput.addEventListener('change', async () => {
     const files = Array.from(capFilesInput.files);
     capFilesInput.value = '';
     if (files.length) await addBottleCapFiles(files);
+});
+document.getElementById('capSearch').addEventListener('input', () => {
+    renderCapInventory();
+    document.getElementById('clearCapSearch').hidden =
+        document.getElementById('capSearch').value.length === 0;
+});
+document.getElementById('clearCapSearch').addEventListener('click', () => {
+    const search = document.getElementById('capSearch');
+    search.value = '';
+    renderCapInventory();
+    document.getElementById('clearCapSearch').hidden = true;
+    search.focus();
 });
 
 for (const control of [controls.gridSize, controls.capSize, controls.capSpacing]) {
