@@ -70,9 +70,9 @@
 
                     <div class="control-row select-label">
                         <label for="capSize">Cap diameter</label>
-                        <span class="control-value"><output id="capSizeValue" for="capSize">29</output> mm</span>
+                        <span class="control-value"><output id="capSizeValue" for="capSize">24</output> mm</span>
                     </div>
-                    <input class="range-input" type="range" id="capSize" min="20" max="40" step="1" value="29">
+                    <input class="range-input" type="range" id="capSize" min="20" max="40" step="1" value="24">
 
                     <div class="select-control">
                         <label for="mosaicShape">Mosaic outline</label>
@@ -81,7 +81,26 @@
                             <option value="circle">Round barrel top</option>
                         </select>
                     </div>
-                    <p class="shape-note" id="shapeNote">A round layout crops your image to a circle. The downloaded PNG keeps the outside transparent.</p>
+                    <p class="shape-note" id="shapeNote">Zoom in and reposition the image inside the round cutout. The downloaded PNG keeps the outside transparent.</p>
+                    <div class="crop-controls" id="cropControls" hidden>
+                        <div class="control-row">
+                            <label for="cropZoom">Image zoom</label>
+                            <span class="control-value"><output id="cropZoomValue" for="cropZoom">100%</output></span>
+                        </div>
+                        <input class="range-input" type="range" id="cropZoom" min="100" max="300" step="1" value="100">
+                        <div class="range-ends"><span>Fit</span><span>Zoom in</span></div>
+                        <div class="control-row crop-position-row">
+                            <label for="cropHorizontal">Move image left / right</label>
+                            <span class="control-value"><output id="cropHorizontalValue" for="cropHorizontal">0%</output></span>
+                        </div>
+                        <input class="range-input" type="range" id="cropHorizontal" min="-100" max="100" step="1" value="0">
+                        <div class="control-row crop-position-row">
+                            <label for="cropVertical">Move image up / down</label>
+                            <span class="control-value"><output id="cropVerticalValue" for="cropVertical">0%</output></span>
+                        </div>
+                        <input class="range-input" type="range" id="cropVertical" min="-100" max="100" step="1" value="0">
+                        <button class="crop-reset" id="resetCrop" type="button">Reset image position</button>
+                    </div>
                     <div class="select-control">
                         <label for="capShape">Cap shape</label>
                         <select id="capShape">
@@ -91,8 +110,8 @@
                         </select>
                     </div>
                     <div class="control-row spacing-row">
-                        <label for="capSpacing">Space between caps</label>
-                        <span class="control-value"><output id="capSpacingValue" for="capSpacing">8</output>%</span>
+                        <label for="capSpacing">Gap between caps</label>
+                        <span class="control-value"><output id="capSpacingValue" for="capSpacing">8% · 1.9 mm</output></span>
                     </div>
                     <input class="range-input" type="range" id="capSpacing" min="0" max="30" step="1" value="8">
                     <div class="select-control background-control">
@@ -154,19 +173,27 @@
                 </div>
 
                 <details class="usage-details">
-                    <summary>Cap-by-cap breakdown <span id="usageSummary">See your inventory</span></summary>
+                    <summary>
+                        <span class="usage-title"><span class="usage-icon" aria-hidden="true">▤</span> Cap-by-cap breakdown</span>
+                        <span id="usageSummary">Click to see cap usage</span>
+                        <span class="usage-chevron" aria-hidden="true">⌄</span>
+                    </summary>
                     <ul id="capDetails"></ul>
                 </details>
 
                 <div class="download-row">
                     <button id="downloadMosaic" class="download-button primary-button" type="button" disabled>
-                        <span aria-hidden="true">↓</span> Download mosaic
+                        <span aria-hidden="true">↓</span> Quick preview
                     </button>
                     <button id="downloadHighResButton" class="download-button secondary-button" type="button" disabled>
-                        <span aria-hidden="true">↗</span> Print-ready
+                        <span aria-hidden="true">↗</span> Print template
                     </button>
                 </div>
-                <p class="download-note">Your image stays on your device. Nothing is uploaded.</p>
+                <div class="download-guidance">
+                    <p><strong>Quick preview</strong> is a smaller image for sharing or checking your design.</p>
+                    <p><strong>Print template</strong> is a high-resolution placement guide for laying out caps on a frame or barrel top. Print at <strong>100% / actual size</strong> using the dimensions above (turn off “fit to page”), then check the print with a ruler before building.</p>
+                    <p class="download-note">Your image stays on your device. Nothing is uploaded.</p>
+                </div>
             </section>
         </div>
         <footer class="page-footer">Saved from a good night. Made for the next one. <span>✳</span></footer>

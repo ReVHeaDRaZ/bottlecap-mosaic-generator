@@ -21,6 +21,9 @@ const controls = {
     gridSize: document.getElementById('gridSize'),
     capSize: document.getElementById('capSize'),
     mosaicShape: document.getElementById('mosaicShape'),
+    cropZoom: document.getElementById('cropZoom'),
+    cropHorizontal: document.getElementById('cropHorizontal'),
+    cropVertical: document.getElementById('cropVertical'),
     capShape: document.getElementById('capShape'),
     capSpacing: document.getElementById('capSpacing'),
     backgroundColor: document.getElementById('backgroundColor'),
@@ -161,8 +164,16 @@ function updateSelectionSummary() {
 function updateRangeLabels() {
     document.getElementById('gridSizeValue').textContent = controls.gridSize.value;
     document.getElementById('capSizeValue').textContent = controls.capSize.value;
-    document.getElementById('capSpacingValue').textContent = controls.capSpacing.value;
-    document.getElementById('shapeNote').hidden = controls.mosaicShape.value !== 'circle';
+    const gapMillimeters =
+        Number(controls.capSize.value) * Number(controls.capSpacing.value) / 100;
+    document.getElementById('capSpacingValue').textContent =
+        `${controls.capSpacing.value}% · ${gapMillimeters.toFixed(1)} mm`;
+    const isCircle = controls.mosaicShape.value === 'circle';
+    document.getElementById('shapeNote').hidden = !isCircle;
+    document.getElementById('cropControls').hidden = !isCircle;
+    document.getElementById('cropZoomValue').textContent = `${controls.cropZoom.value}%`;
+    document.getElementById('cropHorizontalValue').textContent = `${controls.cropHorizontal.value}%`;
+    document.getElementById('cropVerticalValue').textContent = `${controls.cropVertical.value}%`;
 }
 
 function scheduleRender() {
@@ -270,25 +281,34 @@ function getIncludedCells(capSize, pitch, width, height) {
     return cellIndices;
 }
 
-function drawImageInLayout(context, image, width, height) {
-    if (controls.mosaicShape.value !== 'circle') {
-        context.drawImage(image, 0, 0, width, height);
-        return;
+function drawImageInLayout(context, image, width, height, matteColor = controls.backgroundColor.value) {
+    const isCircle = controls.mosaicShape.value === 'circle';
+    context.save();
+    if (isCircle) {
+        const radius = Math.min(width, height) / 2;
+        context.beginPath();
+        context.arc(width / 2, height / 2, radius, 0, Math.PI * 2);
+        context.clip();
     }
 
-    const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
-    const sourceX = (image.naturalWidth - sourceSize) / 2;
-    const sourceY = (image.naturalHeight - sourceSize) / 2;
-    const radius = Math.min(width, height) / 2;
-    context.save();
-    context.beginPath();
-    context.arc(width / 2, height / 2, radius, 0, Math.PI * 2);
-    context.clip();
-    if (controls.backgroundColor.value !== 'transparent') {
-        context.fillStyle = controls.backgroundColor.value;
+    if (matteColor !== 'transparent') {
+        context.fillStyle = matteColor;
         context.fillRect(0, 0, width, height);
     }
-    context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, width, height);
+
+    if (isCircle) {
+        const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
+        const cropSize = sourceSize * 100 / Number(controls.cropZoom.value);
+        const extraX = image.naturalWidth - cropSize;
+        const extraY = image.naturalHeight - cropSize;
+        const sourceX = (extraX / 2) +
+            (Number(controls.cropHorizontal.value) / 100) * (extraX / 2);
+        const sourceY = (extraY / 2) +
+            (Number(controls.cropVertical.value) / 100) * (extraY / 2);
+        context.drawImage(image, sourceX, sourceY, cropSize, cropSize, 0, 0, width, height);
+    } else {
+        context.drawImage(image, 0, 0, width, height);
+    }
     context.restore();
 }
 
@@ -380,8 +400,15 @@ function updateCapUsageDisplay(usage) {
         details.append(item);
     }
 
+    updateUsageSummary();
+}
+
+function updateUsageSummary() {
+    const details = document.querySelector('.usage-details');
+    const count = document.getElementById('capDetails').children.length;
+    const state = details.open ? 'Click to hide' : 'Click to view';
     document.getElementById('usageSummary').textContent =
-        `${usedCaps.length} ${usedCaps.length === 1 ? 'type' : 'types'} used`;
+        `${count} ${count === 1 ? 'cap type' : 'cap types'} · ${state}`;
 }
 
 async function processImage() {
@@ -417,7 +444,7 @@ async function processImage() {
     const sampleContext = sampleCanvas.getContext('2d', { willReadFrequently: true });
     sampleContext.imageSmoothingEnabled = true;
     sampleContext.imageSmoothingQuality = 'high';
-    drawImageInLayout(sampleContext, uploadedImage, capColumns, capRows);
+    drawImageInLayout(sampleContext, uploadedImage, capColumns, capRows, '#ffffff');
     const imageData = sampleContext.getImageData(0, 0, capColumns, capRows).data;
     sampledColors = new Array(capColumns * capRows);
     for (let pixel = 0; pixel < sampledColors.length; pixel++) {
@@ -539,7 +566,17 @@ for (const control of [controls.gridSize, controls.capSize, controls.capSpacing]
 for (const control of [controls.mosaicShape, controls.capShape, controls.backgroundColor]) {
     control.addEventListener('change', scheduleRender);
 }
+for (const control of [controls.cropZoom, controls.cropHorizontal, controls.cropVertical]) {
+    control.addEventListener('input', scheduleRender);
+}
 controls.showInputImage.addEventListener('change', updateCanvasDisplay);
+document.querySelector('.usage-details').addEventListener('toggle', () => updateUsageSummary());
+document.getElementById('resetCrop').addEventListener('click', () => {
+    controls.cropZoom.value = '100';
+    controls.cropHorizontal.value = '0';
+    controls.cropVertical.value = '0';
+    scheduleRender();
+});
 
 document.getElementById('selectAllCaps').addEventListener('click', () => {
     const selectAll = getSelectedCaps().length !== bottleCaps.length;

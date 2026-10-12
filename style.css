@@ -233,6 +233,28 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
     font-size: 11px;
 }
 .shape-note { margin: 8px 0 0; color: #89785f; font-size: 10px; line-height: 1.55; }
+.crop-controls {
+    margin-top: 15px;
+    padding: 13px 12px 11px;
+    border: 1px solid #e9d8bc;
+    border-radius: 7px;
+    background: #fbf3e4;
+}
+.crop-controls .control-row { margin-bottom: 9px; }
+.crop-controls .range-ends { margin-bottom: 13px; }
+.crop-position-row { margin-top: 14px; }
+.crop-reset {
+    margin-top: 15px;
+    padding: 6px 9px;
+    border: 1px solid #d9c4a4;
+    border-radius: 5px;
+    background: #fffaf0;
+    color: #684c2d;
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 650;
+}
+.crop-reset:hover { border-color: var(--accent); background: #fff7e9; }
 .spacing-row { margin-top: 21px; }
 .background-control { margin-top: 18px; }
 
@@ -293,9 +315,31 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .summary-item span:last-child { color: #8c8e86; font-size: 9px; }
 .summary-divider { width: 1px; height: 31px; background: #e6e3db; }
 .usage-details { margin-top: 17px; }
-.usage-details summary { display: flex; align-items: center; justify-content: space-between; cursor: pointer; color: #5d6259; font-size: 10px; font-weight: 700; list-style-position: inside; }
-.usage-details summary span { margin-left: auto; color: #96988f; font-weight: 450; }
-.usage-details ul { max-height: 180px; margin: 10px 0 0; padding: 0; overflow: auto; list-style: none; }
+.usage-details summary {
+    min-height: 46px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 0 12px;
+    border: 1px solid #e3d4ba;
+    border-radius: 7px;
+    background: #faf2e3;
+    color: #493923;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 750;
+    list-style: none;
+    transition: border-color .16s, background .16s;
+}
+.usage-details summary::-webkit-details-marker { display: none; }
+.usage-details summary:hover { border-color: #c99a60; background: #f7ead5; }
+.usage-details summary:focus-visible { outline: 3px solid rgba(189, 113, 55, .46); outline-offset: 3px; }
+.usage-title { display: inline-flex; align-items: center; gap: 8px; }
+.usage-icon { color: var(--accent-dark); font-size: 15px; }
+.usage-details summary #usageSummary { margin-left: auto; color: #866b48; font-size: 9px; font-weight: 600; }
+.usage-chevron { color: #866b48; font-size: 13px; transition: transform .16s; }
+.usage-details[open] .usage-chevron { transform: rotate(180deg); }
+.usage-details ul { max-height: 180px; margin: 8px 0 0; padding: 6px 12px; overflow: auto; border: 1px solid #eee4d2; border-radius: 7px; background: #fffdf8; list-style: none; }
 .usage-details li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid #f0eee8; color: #555a51; font-size: 10px; }
 .usage-cap-name { display: flex; align-items: center; gap: 8px; }
 .usage-details li img { width: 25px; height: 25px; padding: 2px; border: 1px solid #e8e6df; border-radius: 5px; object-fit: contain; }
@@ -309,7 +353,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .secondary-button { border-color: #dfddd4; background: transparent; color: #555a51; }
 .secondary-button:not(:disabled):hover { background: #f8f6f0; }
 .download-button > span { font-size: 15px; }
-.download-note { margin: 11px 0 0; color: #a0a198; font-size: 9px; text-align: center; }
+.download-guidance { margin-top: 13px; padding: 11px 12px; border: 1px solid #e9dfce; border-radius: 7px; background: #fbf7ee; }
+.download-guidance p { margin: 0 0 8px; color: #766950; font-size: 10px; line-height: 1.55; }
+.download-guidance p:last-child { margin-bottom: 0; }
+.download-guidance strong { color: #51432e; }
+.download-note { margin: 10px 0 0 !important; color: #999486 !important; font-size: 9px !important; text-align: center; }
 .page-footer { padding: 31px 0 26px; color: #8c8e85; font-size: 10px; text-align: center; }
 .page-footer span { padding-left: 4px; color: var(--accent); }
 
