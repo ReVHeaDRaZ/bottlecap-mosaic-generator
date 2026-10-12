@@ -1,220 +1,792 @@
-let inputElement = document.getElementById('fileInput');
+const fileInput = document.getElementById('fileInput');
 const canvas = document.getElementById('canvasOutput');
 const ctx = canvas.getContext('2d');
-const bottleCapImages = [];
-const capColors = []; // Store average colors of bottle caps
-const capUsage = {}; // Track bottle cap usage
-let capCount = 0;
+const mosaicCanvas = document.createElement('canvas');
+const mosaicCtx = mosaicCanvas.getContext('2d');
+const bottleCaps = [];
+const MAX_CAPS = 40000;
+const MAX_CANVAS_EDGE = 8192;
+const MAX_PREVIEW_PIXELS = 24000000;
+const MAX_PRINT_PIXELS = 60000000;
+
 let uploadedImage = null;
-let mosaicCanvas = document.createElement('canvas'); // Store the generated mosaic
-let mosaicGenerated = false; // Flag to track if the mosaic is generated
+let mosaicGenerated = false;
+let sampledColors = [];
+let capColumns = 0;
+let capRows = 0;
+let renderTimer;
+let imageObjectUrl = null;
+let customCapSequence = 0;
+const customCapObjectUrls = [];
 
-// Load bottle cap images dynamically from a directory
-async function loadBottleCapImages() {
+const controls = {
+    gridSize: document.getElementById('gridSize'),
+    capSize: document.getElementById('capSize'),
+    mosaicShape: document.getElementById('mosaicShape'),
+    barrelSize: document.getElementById('barrelSize'),
+    customDiameter: document.getElementById('customDiameter'),
+    cropZoom: document.getElementById('cropZoom'),
+    cropHorizontal: document.getElementById('cropHorizontal'),
+    cropVertical: document.getElementById('cropVertical'),
+    capShape: document.getElementById('capShape'),
+    capSpacing: document.getElementById('capSpacing'),
+    backgroundColor: document.getElementById('backgroundColor'),
+    showInputImage: document.getElementById('showInputImage')
+};
+
+function formatName(filename) {
+    return filename
+        .replace(/\.[^/.]+$/, '')
+        .split('_')
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+}
+
+function setStatus(message, isError = false) {
+    const status = document.getElementById('generationStatus');
+    status.textContent = message;
+    status.classList.toggle('error', isError);
+}
+
+function getSelectedCaps() {
+    return bottleCaps.filter((cap) => cap.selected);
+}
+
+function getBarrelDiameterCm() {
+    return controls.barrelSize.value === 'custom'
+        ? Number(controls.customDiameter.value)
+        : Number(controls.barrelSize.value);
+}
+
+function isValidBarrelDiameter() {
+    const diameter = getBarrelDiameterCm();
+    return Number.isFinite(diameter) && diameter >= 20 && diameter <= 150;
+}
+
+function getBarrelCapsAcross() {
+    if (!isValidBarrelDiameter()) return 0;
+    const capDiameter = Number(controls.capSize.value);
+    const gap = capDiameter * Number(controls.capSpacing.value) / 100;
+    return Math.max(1, Math.floor(getBarrelDiameterCm() * 10 / (capDiameter + gap)));
+}
+
+function getAverageColor(data) {
+    let red = 0;
+    let green = 0;
+    let blue = 0;
+    let weight = 0;
+
+    for (let index = 0; index < data.length; index += 4) {
+        const alpha = data[index + 3] / 255;
+        red += data[index] * alpha;
+        green += data[index + 1] * alpha;
+        blue += data[index + 2] * alpha;
+        weight += alpha;
+    }
+
+    if (weight === 0) return { r: 0, g: 0, b: 0 };
+    return { r: red / weight, g: green / weight, b: blue / weight };
+}
+
+function loadImage(src) {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error(`Could not load ${src}`));
+        image.src = src;
+    });
+}
+
+function sampleBottleCap(image) {
+    const sampleSize = 64;
+    const scale = Math.min(1, sampleSize / Math.max(image.naturalWidth, image.naturalHeight));
+    const sample = document.createElement('canvas');
+    sample.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    sample.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const sampleContext = sample.getContext('2d', { willReadFrequently: true });
+    sampleContext.drawImage(image, 0, 0, sample.width, sample.height);
+    return getAverageColor(sampleContext.getImageData(0, 0, sample.width, sample.height).data);
+}
+
+async function loadBottleCaps() {
     const response = await fetch('./bottle-caps/bottle_caps.json');
-    const imageFiles = await response.json();
-    return new Promise((resolve) => {
-        let loadedCount = 0;
-        imageFiles.forEach((filename) => {
-            const bottleCap = new Image();
-            bottleCap.src = `./bottle-caps/${filename}`;
-            bottleCap.onload = function () {
-                let tempCanvas = document.createElement('canvas');
-                let tempCtx = tempCanvas.getContext('2d');
-                tempCanvas.width = bottleCap.width;
-                tempCanvas.height = bottleCap.height;
-                tempCtx.drawImage(bottleCap, 0, 0);
-                
-                let imageData = tempCtx.getImageData(0, 0, bottleCap.width, bottleCap.height);
-                let avgColor = getAverageColor(imageData.data);
-                
-                bottleCapImages.push({ image: tempCanvas, name: filename.replace(/\.[^/.]+$/, "") });
-                capColors.push(avgColor);
-                capUsage[filename.replace(/\.[^/.]+$/, "")] = 0;
-                
-                loadedCount++;
-                if (loadedCount === imageFiles.length) resolve();
-            };
+    if (!response.ok) throw new Error(`Cap collection request failed (${response.status})`);
+    const filenames = await response.json();
+    if (!Array.isArray(filenames) || filenames.length === 0) {
+        throw new Error('The cap collection is empty or unavailable.');
+    }
+
+    const loadedCaps = await Promise.all(filenames.map(async (filename) => {
+        const src = `./bottle-caps/${filename}`;
+        const image = await loadImage(src);
+
+        return {
+            filename,
+            name: formatName(filename),
+            src,
+            image,
+            averageColor: sampleBottleCap(image),
+            selected: true
+        };
+    }));
+    bottleCaps.push(...loadedCaps);
+    renderCapInventory();
+}
+
+function renderCapInventory() {
+    const inventory = document.getElementById('capInventory');
+    inventory.replaceChildren();
+    const query = document.getElementById('capSearch').value.trim().toLocaleLowerCase();
+    const matchingCaps = bottleCaps.filter((cap) => cap.name.toLocaleLowerCase().includes(query));
+
+    matchingCaps.forEach((cap, index) => {
+        const label = document.createElement('label');
+        label.className = 'cap-option';
+        label.title = cap.name;
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = cap.selected;
+        checkbox.value = cap.filename;
+        checkbox.setAttribute('aria-label', cap.name);
+        checkbox.addEventListener('change', () => {
+            cap.selected = checkbox.checked;
+            updateSelectionSummary();
+            scheduleRender();
         });
+
+        const image = document.createElement('img');
+        image.src = cap.src;
+        image.alt = '';
+        image.loading = index > 15 ? 'lazy' : 'eager';
+
+        const name = document.createElement('span');
+        name.className = 'cap-option-name';
+        name.textContent = cap.name;
+
+        label.append(checkbox, image, name);
+        inventory.append(label);
     });
-}
 
-// Get average color of an image data array
-function getAverageColor(imageData) {
-    let r = 0, g = 0, b = 0, count = 0;
-    for (let i = 0; i < imageData.length; i += 4) {
-        r += imageData[i];
-        g += imageData[i + 1];
-        b += imageData[i + 2];
-        count++;
+    const searchResults = document.getElementById('capSearchResults');
+    searchResults.hidden = !query;
+    searchResults.textContent = query
+        ? `${matchingCaps.length} of ${bottleCaps.length} caps found`
+        : '';
+    inventory.dataset.empty = matchingCaps.length === 0 ? 'true' : 'false';
+    let emptyMessage = inventory.querySelector('.cap-search-empty');
+    if (matchingCaps.length === 0) {
+        emptyMessage = document.createElement('p');
+        emptyMessage.className = 'cap-search-empty';
+        emptyMessage.textContent = 'No caps match that search. Try another name.';
+        inventory.append(emptyMessage);
     }
-    return { r: r / count, g: g / count, b: b / count };
+
+    const customCount = bottleCaps.filter((cap) => cap.isCustom).length;
+    document.getElementById('inventoryCount').textContent = customCount
+        ? `${bottleCaps.length} caps · ${customCount} added by you`
+        : `${bottleCaps.length} caps in the collection`;
+    updateSelectionSummary();
 }
 
-// Find the closest matching bottle cap
-function findClosestBottleCap(color) {
-    let bestMatchIndex = 0;
-    let smallestDiff = Infinity;
-    capColors.forEach((capColor, index) => {
-        let diff = Math.abs(capColor.r - color.r) + Math.abs(capColor.g - color.g) + Math.abs(capColor.b - color.b);
-        if (diff < smallestDiff) {
-            smallestDiff = diff;
-            bestMatchIndex = index;
+function updateSelectionSummary() {
+    const selectedCount = getSelectedCaps().length;
+    document.getElementById('capSelectionSummary').textContent =
+        `${selectedCount} of ${bottleCaps.length} caps selected`;
+    const selectAllButton = document.getElementById('selectAllCaps');
+    selectAllButton.textContent = selectedCount === bottleCaps.length ? 'Clear all' : 'Select all';
+
+    if (uploadedImage && selectedCount === 0) {
+        mosaicGenerated = false;
+        document.getElementById('downloadMosaic').disabled = true;
+        document.getElementById('downloadHighResButton').disabled = true;
+        canvas.hidden = true;
+        document.getElementById('emptyState').hidden = false;
+        document.getElementById('previewHeading').textContent = 'Choose at least one cap';
+        setStatus('Select a cap to build your mosaic', true);
+    }
+}
+
+function updateRangeLabels() {
+    document.getElementById('gridSizeValue').textContent = controls.gridSize.value;
+    document.getElementById('capSizeValue').textContent = controls.capSize.value;
+    const gapMillimeters =
+        Number(controls.capSize.value) * Number(controls.capSpacing.value) / 100;
+    document.getElementById('capSpacingValue').textContent =
+        `${controls.capSpacing.value}% · ${gapMillimeters.toFixed(1)} mm`;
+    const isCircle = controls.mosaicShape.value === 'circle';
+    document.getElementById('shapeNote').hidden = !isCircle;
+    document.getElementById('barrelControls').hidden = !isCircle;
+    document.getElementById('imageDetailControl').hidden = isCircle;
+    document.getElementById('gridSize').hidden = isCircle;
+    document.getElementById('imageDetailEnds').hidden = isCircle;
+    document.getElementById('cropControls').hidden = !isCircle;
+    document.getElementById('customDiameterControl').hidden =
+        !isCircle || controls.barrelSize.value !== 'custom';
+    const across = getBarrelCapsAcross();
+    document.getElementById('barrelFitSummary').textContent = across
+        ? `About ${across} caps across · ${across * across} caps in a full grid (fewer in the circle).`
+        : 'Enter a lid diameter between 20 and 150 cm.';
+    document.getElementById('cropZoomValue').textContent = `${controls.cropZoom.value}%`;
+    document.getElementById('cropHorizontalValue').textContent = `${controls.cropHorizontal.value}%`;
+    document.getElementById('cropVerticalValue').textContent = `${controls.cropVertical.value}%`;
+}
+
+function scheduleRender() {
+    updateRangeLabels();
+    window.clearTimeout(renderTimer);
+    renderTimer = window.setTimeout(() => {
+        if (uploadedImage) processImage();
+    }, 90);
+}
+
+function findClosestBottleCap(color, selectedCaps) {
+    let bestMatch = selectedCaps[0];
+    let smallestDifference = Infinity;
+
+    for (const cap of selectedCaps) {
+        const difference =
+            Math.abs(cap.averageColor.r - color.r) +
+            Math.abs(cap.averageColor.g - color.g) +
+            Math.abs(cap.averageColor.b - color.b);
+        if (difference < smallestDifference) {
+            smallestDifference = difference;
+            bestMatch = cap;
         }
+    }
+
+    return bestMatch;
+}
+
+function drawCap(context, cap, x, y, size, shape) {
+    context.save();
+    context.beginPath();
+
+    if (shape === 'circle') {
+        context.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+    } else if (shape === 'hexagon') {
+        for (let point = 0; point < 6; point++) {
+            const angle = (Math.PI / 3) * point - Math.PI / 6;
+            const pointX = x + size / 2 + Math.cos(angle) * size / 2;
+            const pointY = y + size / 2 + Math.sin(angle) * size / 2;
+            if (point === 0) context.moveTo(pointX, pointY);
+            else context.lineTo(pointX, pointY);
+        }
+        context.closePath();
+    } else {
+        context.rect(x, y, size, size);
+    }
+
+    context.clip();
+    context.drawImage(cap.image, x, y, size, size);
+    context.restore();
+
+    context.save();
+    context.beginPath();
+    if (shape === 'circle') {
+        context.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+    } else if (shape === 'hexagon') {
+        for (let point = 0; point < 6; point++) {
+            const angle = (Math.PI / 3) * point - Math.PI / 6;
+            const pointX = x + size / 2 + Math.cos(angle) * size / 2;
+            const pointY = y + size / 2 + Math.sin(angle) * size / 2;
+            if (point === 0) context.moveTo(pointX, pointY);
+            else context.lineTo(pointX, pointY);
+        }
+        context.closePath();
+    } else {
+        context.rect(x, y, size, size);
+    }
+    context.strokeStyle = 'rgba(24, 28, 24, 0.16)';
+    context.lineWidth = Math.max(0.6, size * 0.018);
+    context.stroke();
+    context.restore();
+}
+
+function getCanvasSize(capSize, spacing) {
+    const pitch = capSize * (1 + spacing);
+    const layout = {
+        pitch,
+        width: Math.ceil((capColumns - 1) * pitch + capSize),
+        height: Math.ceil((capRows - 1) * pitch + capSize)
+    };
+    if (controls.mosaicShape.value === 'circle') {
+        const pixelsPerMillimeter = capSize / Number(controls.capSize.value);
+        layout.width = Math.ceil(getBarrelDiameterCm() * 10 * pixelsPerMillimeter);
+        layout.height = layout.width;
+    }
+    layout.offsetX = controls.mosaicShape.value === 'circle'
+        ? (layout.width - ((capColumns - 1) * pitch + capSize)) / 2
+        : 0;
+    layout.offsetY = controls.mosaicShape.value === 'circle'
+        ? (layout.height - ((capRows - 1) * pitch + capSize)) / 2
+        : 0;
+    return layout;
+}
+
+function getIncludedCells(capSize, pitch, width, height, offsetX, offsetY) {
+    const cellIndices = [];
+    const isCircle = controls.mosaicShape.value === 'circle';
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const radius = Math.min(width, height) / 2;
+
+    for (let row = 0; row < capRows; row++) {
+        for (let column = 0; column < capColumns; column++) {
+            if (isCircle) {
+                const x = offsetX + column * pitch + capSize / 2;
+                const y = offsetY + row * pitch + capSize / 2;
+                if (Math.hypot(x - centerX, y - centerY) > radius) continue;
+            }
+            cellIndices.push(row * capColumns + column);
+        }
+    }
+    return cellIndices;
+}
+
+function drawImageInLayout(context, image, width, height, matteColor = controls.backgroundColor.value) {
+    const isCircle = controls.mosaicShape.value === 'circle';
+    context.save();
+    if (isCircle) {
+        const radius = Math.min(width, height) / 2;
+        context.beginPath();
+        context.arc(width / 2, height / 2, radius, 0, Math.PI * 2);
+        context.clip();
+    }
+
+    if (matteColor !== 'transparent') {
+        context.fillStyle = matteColor;
+        context.fillRect(0, 0, width, height);
+    }
+
+    if (isCircle) {
+        const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
+        const cropSize = sourceSize * 100 / Number(controls.cropZoom.value);
+        const extraX = image.naturalWidth - cropSize;
+        const extraY = image.naturalHeight - cropSize;
+        const sourceX = (extraX / 2) +
+            (Number(controls.cropHorizontal.value) / 100) * (extraX / 2);
+        const sourceY = (extraY / 2) +
+            (Number(controls.cropVertical.value) / 100) * (extraY / 2);
+        context.drawImage(image, sourceX, sourceY, cropSize, cropSize, 0, 0, width, height);
+    } else {
+        context.drawImage(image, 0, 0, width, height);
+    }
+    context.restore();
+}
+
+function paintMosaic(targetCanvas, targetContext, capSize, selectedCaps) {
+    const spacing = Number(controls.capSpacing.value) / 100;
+    const { pitch, width, height, offsetX, offsetY } = getCanvasSize(capSize, spacing);
+    targetCanvas.width = width;
+    targetCanvas.height = height;
+    targetContext.clearRect(0, 0, width, height);
+
+    if (controls.mosaicShape.value === 'circle') {
+        targetContext.save();
+        targetContext.beginPath();
+        targetContext.arc(width / 2, height / 2, Math.min(width, height) / 2, 0, Math.PI * 2);
+        targetContext.clip();
+    }
+
+    if (controls.backgroundColor.value !== 'transparent') {
+        targetContext.fillStyle = controls.backgroundColor.value;
+        targetContext.fillRect(0, 0, width, height);
+    }
+
+    const capShape = controls.capShape.value;
+    const usage = new Map(selectedCaps.map((cap) => [cap.filename, 0]));
+    const cells = getIncludedCells(capSize, pitch, width, height, offsetX, offsetY);
+    for (const index of cells) {
+        const color = sampledColors[index];
+        const cap = findClosestBottleCap(color, selectedCaps);
+        usage.set(cap.filename, usage.get(cap.filename) + 1);
+        const column = index % capColumns;
+        const row = Math.floor(index / capColumns);
+        drawCap(
+            targetContext,
+            cap,
+            offsetX + column * pitch,
+            offsetY + row * pitch,
+            capSize,
+            capShape
+        );
+    }
+
+    if (controls.mosaicShape.value === 'circle') targetContext.restore();
+    return { usage, capCount: cells.length };
+}
+
+function getPhysicalDimensions() {
+    const diameter = Number(controls.capSize.value);
+    const spacing = Number(controls.capSpacing.value) / 100;
+    if (controls.mosaicShape.value === 'circle') {
+        const diameterCm = getBarrelDiameterCm();
+        return { width: diameterCm, height: diameterCm };
+    }
+    return {
+        width: (capColumns * diameter + (capColumns - 1) * diameter * spacing) / 10,
+        height: (capRows * diameter + (capRows - 1) * diameter * spacing) / 10
+    };
+}
+
+function formatDimensions(width, height) {
+    const inchesWide = width / 2.54;
+    const inchesHigh = height / 2.54;
+    return `${width.toFixed(1)} × ${height.toFixed(1)} cm · ${inchesWide.toFixed(1)} × ${inchesHigh.toFixed(1)} in`;
+}
+
+function updateDimensions() {
+    const { width, height } = getPhysicalDimensions();
+    const isCircle = controls.mosaicShape.value === 'circle';
+    const formatted = isCircle
+        ? `Ø ${width.toFixed(1)} cm · ${((width / 2.54)).toFixed(1)} in diameter`
+        : formatDimensions(width, height);
+    document.getElementById('mosaicDimensions').textContent = `Approx. size: ${formatted}`;
+    document.getElementById('summaryDimensions').textContent =
+        isCircle ? `Ø ${width.toFixed(1)} cm` : `${width.toFixed(1)} × ${height.toFixed(1)} cm`;
+    document.querySelector('.preview-stage').dataset.shape = isCircle ? 'circle' : 'rectangle';
+}
+
+function updateCapUsageDisplay(usage) {
+    const details = document.getElementById('capDetails');
+    details.replaceChildren();
+    const usedCaps = bottleCaps.filter((cap) => (usage.get(cap.filename) || 0) > 0)
+        .sort((first, second) => usage.get(second.filename) - usage.get(first.filename));
+
+    for (const cap of usedCaps) {
+        const item = document.createElement('li');
+        const nameContainer = document.createElement('span');
+        nameContainer.className = 'usage-cap-name';
+        const image = document.createElement('img');
+        image.src = cap.src;
+        image.alt = '';
+        const name = document.createElement('span');
+        name.textContent = cap.name;
+        const count = document.createElement('strong');
+        count.textContent = `${usage.get(cap.filename).toLocaleString()} caps`;
+        nameContainer.append(image, name);
+        item.append(nameContainer, count);
+        details.append(item);
+    }
+
+    updateUsageSummary();
+}
+
+function updateUsageSummary() {
+    const details = document.querySelector('.usage-details');
+    const count = document.getElementById('capDetails').children.length;
+    const state = details.open ? 'Click to hide' : 'Click to view';
+    document.getElementById('usageSummary').textContent =
+        `${count} ${count === 1 ? 'cap type' : 'cap types'} · ${state}`;
+}
+
+async function createCustomBottleCap(file) {
+    const src = URL.createObjectURL(file);
+    try {
+        const image = await loadImage(src);
+        customCapSequence += 1;
+
+        return {
+            filename: `custom-cap-${customCapSequence}`,
+            name: formatName(file.name),
+            src,
+            image,
+            averageColor: sampleBottleCap(image),
+            selected: true,
+            isCustom: true
+        };
+    } catch (error) {
+        URL.revokeObjectURL(src);
+        throw new Error(`${file.name}: ${error.message}`);
+    }
+}
+
+async function addBottleCapFiles(files) {
+    const uploadStatus = document.getElementById('capUploadStatus');
+    uploadStatus.classList.remove('error');
+    uploadStatus.textContent = 'Adding your bottle caps…';
+
+    const validFiles = [];
+    const rejectedFiles = [];
+    for (const file of files) {
+        if (!file.type.startsWith('image/')) rejectedFiles.push(`${file.name} is not an image.`);
+        else validFiles.push(file);
+    }
+
+    const results = await Promise.allSettled(validFiles.map(createCustomBottleCap));
+    const addedCaps = results
+        .filter((result) => result.status === 'fulfilled')
+        .map((result) => result.value);
+    results.forEach((result) => {
+        if (result.status === 'rejected') rejectedFiles.push(result.reason.message);
     });
-    capUsage[bottleCapImages[bestMatchIndex].name]++;
-    return bottleCapImages[bestMatchIndex].image;
-}
 
-// Update cap usage display
-function updateCapUsageDisplay() {
-    const capDetailsElement = document.getElementById('capDetails');
-    capDetailsElement.innerHTML = '';
-    for (const [capName, count] of Object.entries(capUsage)) {
-        if (count > 0) {
-            const listItem = document.createElement('li');
-            listItem.innerHTML = `<img src="./bottle-caps/${capName}.png"> ${capName}: ${count}`;
-            capDetailsElement.appendChild(listItem);
+    if (addedCaps.length) {
+        for (const cap of addedCaps) {
+            const baseName = cap.name;
+            const matchingNames = bottleCaps.filter((existingCap) =>
+                existingCap.name === baseName || existingCap.name.startsWith(`${baseName} (`)
+            ).length;
+            if (matchingNames) cap.name = `${baseName} (${matchingNames + 1})`;
+            bottleCaps.push(cap);
         }
+        customCapObjectUrls.push(...addedCaps.map((cap) => cap.src));
+        renderCapInventory();
+        scheduleRender();
+    }
+
+    if (rejectedFiles.length) {
+        uploadStatus.classList.add('error');
+        uploadStatus.textContent = [
+            addedCaps.length ? `Added ${addedCaps.length} cap${addedCaps.length === 1 ? '' : 's'}.` : '',
+            `Could not add: ${rejectedFiles.join(' ')}`
+        ].filter(Boolean).join(' ');
+    } else {
+        uploadStatus.textContent =
+            `Added ${addedCaps.length} cap${addedCaps.length === 1 ? '' : 's'} — selected for your mosaic.`;
     }
 }
 
-function updateMosaicDimensions() {
-    let gridSize = parseInt(document.getElementById('gridSize').value);
-    let capsWide = Math.floor(uploadedImage.width / gridSize);
-    let capsHigh = Math.floor(uploadedImage.height / gridSize);
-
-    let widthMM = capsWide * 29; 
-    let heightMM = capsHigh * 29;
-    
-    let widthCM = (widthMM / 10).toFixed(1);  
-    let heightCM = (heightMM / 10).toFixed(1);  
-    
-    let widthIN = (widthMM / 25.4).toFixed(1);  
-    let heightIN = (heightMM / 25.4).toFixed(1);
-
-    document.getElementById('mosaicDimensions').innerHTML = 
-        `Approx. Size: ${widthCM}cm × ${heightCM}cm (${widthIN}in × ${heightIN}in)`;
-}
-
-// Process image and generate mosaic
 async function processImage() {
     if (!uploadedImage) return;
-    canvas.width = uploadedImage.width;
-    canvas.height = uploadedImage.height;
-    
-    ctx.drawImage(uploadedImage, 0, 0); // Ensure the image is drawn before processing
-    
-    await loadBottleCapImages();
-
-    capCount = 0;
-    Object.keys(capUsage).forEach(key => capUsage[key] = 0);
-    let gridSize = parseInt(document.getElementById('gridSize').value);
-    
-    mosaicCanvas.width = uploadedImage.width;
-    mosaicCanvas.height = uploadedImage.height;
-    let mosaicCtx = mosaicCanvas.getContext('2d');
-    
-    for (let y = 0; y < uploadedImage.height; y += gridSize) {
-        for (let x = 0; x < uploadedImage.width; x += gridSize) {
-            let blockData = ctx.getImageData(x, y, gridSize, gridSize).data;
-            let avgColor = getAverageColor(blockData);
-            let bestCap = findClosestBottleCap(avgColor);
-            mosaicCtx.drawImage(bestCap, x, y, gridSize, gridSize);
-            capCount++;
-        }
-    }
-    mosaicGenerated = true;
-    document.getElementById('capCount').textContent = `Bottle Caps Used: ${capCount}`;
-    updateCapUsageDisplay();
-    updateCanvasDisplay();
-    updateMosaicDimensions();
-}
-
-// Toggle between input image and mosaic
-function updateCanvasDisplay() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (!document.getElementById('showInputImage').checked) {
-        if (mosaicGenerated) {
-            ctx.drawImage(mosaicCanvas, 0, 0);
-        }
-    } else {
-        ctx.drawImage(uploadedImage, 0, 0);
-    }
-}
-
-// Handle file upload
-inputElement.addEventListener('change', async (e) => {
-    uploadedImage = new Image();
-    uploadedImage.src = URL.createObjectURL(e.target.files[0]);
-    uploadedImage.onload = () => {
-        ctx.drawImage(uploadedImage, 0, 0); // Ensure image is visible immediately
+    if (controls.mosaicShape.value === 'circle' && !isValidBarrelDiameter()) {
         mosaicGenerated = false;
-        processImage();
-    };
-});
-
-// Reprocess image when grid size changes
-document.getElementById('gridSize').addEventListener('change', processImage);
-// Toggle input image or mosaic
-document.getElementById('showInputImage').addEventListener('change', updateCanvasDisplay);
-
-document.getElementById('downloadMosaic').addEventListener('click', function () {
-    if (!mosaicGenerated) {
-        alert("Generate the mosaic first!");
+        document.getElementById('downloadMosaic').disabled = true;
+        document.getElementById('downloadHighResButton').disabled = true;
+        setStatus('Enter a lid diameter between 20 and 150 cm.', true);
         return;
     }
-    const link = document.createElement('a');
-    link.download = 'bottlecap_mosaic.png';
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-});
-
-function downloadHighResMosaic() {
-    if (!mosaicGenerated) {
-        alert("Generate the mosaic first!");
+    const selectedCaps = getSelectedCaps();
+    if (selectedCaps.length === 0) {
+        updateSelectionSummary();
         return;
     }
 
-    let gridSize = parseInt(document.getElementById('gridSize').value);
-    let capsWide = Math.floor(uploadedImage.width / gridSize);
-    let capsHigh = Math.floor(uploadedImage.height / gridSize);
-
-    let maxDimension = 8192; // Max safe canvas size
-    let baseCapSize = 300;
-    let scaledCapSize = Math.min(100, Math.floor(maxDimension / Math.max(capsWide, capsHigh) * baseCapSize));
-
-    let finalWidth = capsWide * scaledCapSize;
-    let finalHeight = capsHigh * scaledCapSize;
-
-    let highResCanvas = document.createElement('canvas');
-    highResCanvas.width = finalWidth;
-    highResCanvas.height = finalHeight;
-    let highResCtx = highResCanvas.getContext('2d');
-
-    for (let y = 0; y < capsHigh; y++) {
-        for (let x = 0; x < capsWide; x++) {
-            let blockData = ctx.getImageData(x * gridSize, y * gridSize, gridSize, gridSize).data;
-            let avgColor = getAverageColor(blockData);
-            let bestCap = findClosestBottleCap(avgColor);
-            highResCtx.drawImage(bestCap, x * scaledCapSize, y * scaledCapSize, scaledCapSize, scaledCapSize);
-        }
+    const sampleSize = Number(controls.gridSize.value);
+    if (controls.mosaicShape.value === 'circle') {
+        capColumns = getBarrelCapsAcross();
+        capRows = capColumns;
+    } else {
+        capColumns = Math.ceil(uploadedImage.naturalWidth / sampleSize);
+        capRows = Math.ceil(uploadedImage.naturalHeight / sampleSize);
+    }
+    const maximumCellCount = capColumns * capRows;
+    if (maximumCellCount > MAX_CAPS || Math.max(capColumns, capRows) > MAX_CANVAS_EDGE) {
+        mosaicGenerated = false;
+        document.getElementById('downloadMosaic').disabled = true;
+        document.getElementById('downloadHighResButton').disabled = true;
+        setStatus('Too many caps to preview. Increase image detail size.', true);
+        document.getElementById('previewHeading').textContent = 'Simplify your mosaic';
+        return;
     }
 
-   // Convert the canvas to a data URL
-   const dataUrl = highResCanvas.toDataURL('image/png');
+    setStatus('Building your mosaic…');
+    const sampleCanvas = document.createElement('canvas');
+    sampleCanvas.width = capColumns;
+    sampleCanvas.height = capRows;
+    const sampleContext = sampleCanvas.getContext('2d', { willReadFrequently: true });
+    sampleContext.imageSmoothingEnabled = true;
+    sampleContext.imageSmoothingQuality = 'high';
+    drawImageInLayout(sampleContext, uploadedImage, capColumns, capRows, '#ffffff');
+    const imageData = sampleContext.getImageData(0, 0, capColumns, capRows).data;
+    sampledColors = new Array(capColumns * capRows);
+    for (let pixel = 0; pixel < sampledColors.length; pixel++) {
+        const offset = pixel * 4;
+        sampledColors[pixel] = getAverageColor(imageData.subarray(offset, offset + 4));
+    }
 
-   // Create a temporary anchor element for download
-   const link = document.createElement('a');
-   link.href = dataUrl;
-   link.download = 'bottlecap_mosaic.png';
-   
-   // Append the link to the body and trigger the click event
-   document.body.appendChild(link);
-   link.click();
-   
-   // Remove the link from the body
-   document.body.removeChild(link);
+    const spacing = Number(controls.capSpacing.value) / 100;
+    const targetCapSize = Number(controls.capSize.value);
+    const targetDiameterMm = controls.mosaicShape.value === 'circle'
+        ? getBarrelDiameterCm() * 10
+        : 0;
+    const previewSize = Math.max(1, Math.min(
+        28,
+        Math.floor(Math.sqrt(MAX_PREVIEW_PIXELS / maximumCellCount)),
+        controls.mosaicShape.value === 'circle'
+            ? Math.floor(MAX_CANVAS_EDGE * targetCapSize / targetDiameterMm)
+            : Math.floor(MAX_CANVAS_EDGE / (Math.max(capColumns, capRows) * (1 + spacing)))
+    ));
+    const { usage, capCount } = paintMosaic(mosaicCanvas, mosaicCtx, previewSize, selectedCaps);
+    mosaicGenerated = true;
+    document.getElementById('capCount').textContent = capCount.toLocaleString();
+    document.getElementById('previewHeading').textContent = controls.mosaicShape.value === 'circle'
+        ? 'Your round barrel-top preview'
+        : 'Here’s your cap-by-cap preview';
+    document.getElementById('emptyState').hidden = true;
+    canvas.hidden = false;
+    document.getElementById('downloadMosaic').disabled = false;
+    document.getElementById('downloadHighResButton').disabled = false;
+    updateCapUsageDisplay(usage);
+    updateDimensions();
+    updateCanvasDisplay();
+    setStatus(`${capCount.toLocaleString()} caps mapped to your image`);
 }
 
-document.getElementById('downloadHighResButton').addEventListener('click', downloadHighResMosaic);
+function updateCanvasDisplay() {
+    if (!mosaicGenerated) return;
+    canvas.width = mosaicCanvas.width;
+    canvas.height = mosaicCanvas.height;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (controls.showInputImage.checked) {
+        drawImageInLayout(ctx, uploadedImage, canvas.width, canvas.height);
+    } else {
+        ctx.drawImage(mosaicCanvas, 0, 0);
+    }
+}
+
+function handleSelectedFile(file) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+        setStatus('Choose a valid image file to continue.', true);
+        return;
+    }
+
+    if (imageObjectUrl) URL.revokeObjectURL(imageObjectUrl);
+    imageObjectUrl = URL.createObjectURL(file);
+    fileInput.value = '';
+    const image = new Image();
+    image.onload = () => {
+        uploadedImage = image;
+        document.getElementById('uploadTitle').textContent = file.name;
+        document.getElementById('uploadHint').textContent =
+            `${image.naturalWidth.toLocaleString()} × ${image.naturalHeight.toLocaleString()} px · Click to change`;
+        document.getElementById('previewHeading').textContent = 'Here’s your cap-by-cap preview';
+        document.getElementById('emptyState').hidden = true;
+        canvas.hidden = false;
+        controls.showInputImage.checked = false;
+        scheduleRender();
+    };
+    image.onerror = () => setStatus('This image could not be opened. Try a different file.', true);
+    image.src = imageObjectUrl;
+}
+
+function downloadCanvas(sourceCanvas, filename) {
+    return new Promise((resolve, reject) => {
+        sourceCanvas.toBlob((blob) => {
+            if (!blob) {
+                reject(new Error('The browser could not create the image file.'));
+                return;
+            }
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            link.click();
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+            resolve();
+        }, 'image/png');
+    });
+}
+
+async function downloadMosaic(highResolution) {
+    if (!mosaicGenerated) return;
+    const selectedCaps = getSelectedCaps();
+    try {
+        let downloadCanvasElement = mosaicCanvas;
+        if (highResolution) {
+            setStatus('Preparing your print-ready file…');
+            const numberOfCaps = capColumns * capRows;
+            const spacing = Number(controls.capSpacing.value) / 100;
+            const targetCapSize = Number(controls.capSize.value);
+            const targetDiameterMm = controls.mosaicShape.value === 'circle'
+                ? getBarrelDiameterCm() * 10
+                : 0;
+            const printSize = Math.max(1, Math.min(
+                300,
+                Math.floor(Math.sqrt(MAX_PRINT_PIXELS / numberOfCaps)),
+                controls.mosaicShape.value === 'circle'
+                    ? Math.floor(MAX_CANVAS_EDGE * targetCapSize / targetDiameterMm)
+                    : Math.floor(MAX_CANVAS_EDGE / (Math.max(capColumns, capRows) * (1 + spacing)))
+            ));
+            downloadCanvasElement = document.createElement('canvas');
+            const downloadContext = downloadCanvasElement.getContext('2d');
+            paintMosaic(downloadCanvasElement, downloadContext, printSize, selectedCaps);
+        }
+
+        await downloadCanvas(downloadCanvasElement, highResolution
+            ? 'bottlecap-mosaic-print.png'
+            : 'bottlecap-mosaic.png');
+        setStatus(highResolution ? 'Print-ready mosaic downloaded' : 'Mosaic downloaded');
+    } catch (error) {
+        setStatus(error.message || 'Could not create the download.', true);
+    }
+}
+
+fileInput.addEventListener('change', (event) => handleSelectedFile(event.target.files[0]));
+const capFilesInput = document.getElementById('capFiles');
+capFilesInput.addEventListener('change', async () => {
+    const files = Array.from(capFilesInput.files);
+    capFilesInput.value = '';
+    if (files.length) await addBottleCapFiles(files);
+});
+document.getElementById('capSearch').addEventListener('input', () => {
+    renderCapInventory();
+    document.getElementById('clearCapSearch').hidden =
+        document.getElementById('capSearch').value.length === 0;
+});
+document.getElementById('clearCapSearch').addEventListener('click', () => {
+    const search = document.getElementById('capSearch');
+    search.value = '';
+    renderCapInventory();
+    document.getElementById('clearCapSearch').hidden = true;
+    search.focus();
+});
+
+for (const control of [controls.gridSize, controls.capSize, controls.capSpacing]) {
+    control.addEventListener('input', scheduleRender);
+}
+for (const control of [controls.mosaicShape, controls.capShape, controls.backgroundColor]) {
+    control.addEventListener('change', scheduleRender);
+}
+controls.barrelSize.addEventListener('change', scheduleRender);
+controls.customDiameter.addEventListener('input', scheduleRender);
+for (const control of [controls.cropZoom, controls.cropHorizontal, controls.cropVertical]) {
+    control.addEventListener('input', scheduleRender);
+}
+controls.showInputImage.addEventListener('change', updateCanvasDisplay);
+document.querySelector('.usage-details').addEventListener('toggle', () => updateUsageSummary());
+document.getElementById('resetCrop').addEventListener('click', () => {
+    controls.cropZoom.value = '100';
+    controls.cropHorizontal.value = '0';
+    controls.cropVertical.value = '0';
+    scheduleRender();
+});
+
+document.getElementById('selectAllCaps').addEventListener('click', () => {
+    const selectAll = getSelectedCaps().length !== bottleCaps.length;
+    for (const cap of bottleCaps) cap.selected = selectAll;
+    document.querySelectorAll('#capInventory input[type="checkbox"]').forEach((checkbox) => {
+        checkbox.checked = selectAll;
+    });
+    updateSelectionSummary();
+    scheduleRender();
+});
+
+document.getElementById('downloadMosaic').addEventListener('click', () => downloadMosaic(false));
+document.getElementById('downloadHighResButton').addEventListener('click', () => downloadMosaic(true));
+
+const uploadZone = document.getElementById('uploadZone');
+uploadZone.addEventListener('dragover', (event) => {
+    event.preventDefault();
+    uploadZone.classList.add('drag-over');
+});
+uploadZone.addEventListener('dragleave', (event) => {
+    if (!uploadZone.contains(event.relatedTarget)) uploadZone.classList.remove('drag-over');
+});
+uploadZone.addEventListener('drop', (event) => {
+    event.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    handleSelectedFile(event.dataTransfer.files[0]);
+});
+
+updateRangeLabels();
+window.addEventListener('pagehide', () => {
+    if (imageObjectUrl) URL.revokeObjectURL(imageObjectUrl);
+    customCapObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+});
+loadBottleCaps().catch((error) => {
+    document.getElementById('inventoryCount').textContent = 'Collection could not be loaded';
+    setStatus(error.message || 'Bottle cap images could not be loaded.', true);
+});
